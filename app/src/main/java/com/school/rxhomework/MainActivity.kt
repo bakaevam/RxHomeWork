@@ -1,6 +1,7 @@
 package com.school.rxhomework
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.activity.viewModels
@@ -8,31 +9,47 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.jakewharton.rxbinding2.support.v4.widget.RxSwipeRefreshLayout
 import com.google.gson.annotations.SerializedName
+import com.jakewharton.rxbinding4.swiperefreshlayout.refreshes
 import com.school.rxhomework.databinding.ActivityMainBinding
 import com.school.rxhomework.databinding.ItemHolderBinding
+import io.reactivex.rxjava3.disposables.CompositeDisposable
 
 class MainActivity : AppCompatActivity() {
 
     private val viewModel by viewModels<ActivityViewModel>()
+
+    private val compositeDisposable = CompositeDisposable()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val adapter = Adapter()
         ActivityMainBinding.inflate(layoutInflater).apply {
             setContentView(root)
+
+            compositeDisposable.add(root.refreshes().subscribe(viewModel.getPostsObserver::onNext))
+
             recyclerView.adapter = adapter
+
             viewModel.state.observe(this@MainActivity) { state ->
                 when (state) {
-                    State.Loading -> root.isRefreshing = true
+                    State.Loading -> {
+                        root.isRefreshing = true
+                    }
                     is State.Loaded -> {
                         root.isRefreshing = false
                         adapter.submitList(state.content)
                     }
                 }
             }
-            root.setOnRefreshListener { viewModel.processAction(Action.RefreshData) }
+            viewModel.getPostsObserver.onNext(Unit)
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        compositeDisposable.dispose()
     }
 
     class Adapter : ListAdapter<Adapter.Item, Adapter.Holder>(DiffCallback) {
@@ -44,8 +61,15 @@ class MainActivity : AppCompatActivity() {
             holder.bind(getItem(position))
         }
 
-        class Holder(private val binding: ItemHolderBinding) : RecyclerView.ViewHolder(binding.root) {
-            constructor(parent: ViewGroup) : this(ItemHolderBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+        class Holder(private val binding: ItemHolderBinding) :
+            RecyclerView.ViewHolder(binding.root) {
+            constructor(parent: ViewGroup) : this(
+                ItemHolderBinding.inflate(
+                    LayoutInflater.from(
+                        parent.context
+                    ), parent, false
+                )
+            )
 
             fun bind(item: Item) {
                 binding.apply {
